@@ -373,3 +373,100 @@ sim_doext |>
   tabyl(def_ocup) |> arrange(desc(n)) |> #head(17) |>  
   adorn_totals() |> adorn_pct_formatting() |>
   rio::export(x=_,"Tabelas/ocupa.xlsx")
+
+
+# Histograma Idade x Instrumento ------------------------------------------
+library(tidyverse)
+library(janitor)
+#Pasta raiz
+here::i_am("Rotinas/bapi_sul.R")
+#Importando base SIM-DOEXT
+load(paste0(dirname(getwd()),"/bases/sim/RData/sim_doext_14_24.RData") ) 
+
+#Histograma de idade por instrumento
+sim_doext |> 
+  
+  mutate(idade = idade |> as.integer() ) |>
+  
+  filter(!is.na(idade) & def_reg_resd == "Sul" & intencao_homic == "Homicídio") |>
+  
+  ggplot() +
+  
+  geom_histogram(aes(x = idade, fill = instrumento), binwidth  = 3,color = "white")  +
+  
+  #Idade Média, por UF de residência
+  geom_vline(data = sim_doext |>
+               
+               mutate(idade = idade |> as.integer() ) |>
+               
+               filter(!is.na(idade) & def_reg_resd == "Sul" & intencao_homic == "Homicídio") |> 
+               summarise(idade = mean(idade), .by = c(def_reg_resd)),
+             aes(xintercept = mean(idade) ),color = "red",linewidth = 0.5, linetype="dashed")  +
+  
+  facet_wrap(vars(def_uf_resd), scales = "free") +
+  
+  labs(x="", y = "Frequência",fill = "") + 
+  
+  theme(legend.position = "bottom") + guides(fill = guide_legend(nrow = 2))
+ggsave(filename ="Figuras/idade_instr.bmp",width = 8,height = 5,device='bmp', dpi=150)
+
+
+
+# Gráfico de Barra - Faixa Etária e instrumento ---------------------------
+library(tidyverse)
+library(janitor)
+#Pasta raiz
+here::i_am("Rotinas/bapi_sul.R")
+#Importando base SIM-DOEXT
+load(paste0(dirname(getwd()),"/bases/sim/RData/sim_doext_14_24.RData") ) 
+
+#Contagem de homicídios na faixa etária
+sim_doext |> 
+  filter(intencao_homic == "Homicídio" & !is.na(idade) & def_reg_resd == "Sul") |>
+  mutate(
+    idade = idade |> as.integer(),
+    #Idade até 90 anos 
+    idade = case_when(idade >= 90 ~ 90, .default = idade),    
+    #Faixa etária
+    fxet = (idade %/% 5) * 5 ) |> 
+  #Contagem
+  count(def_uf_resd, fxet, name = "n_fext") |> 
+  add_count(def_uf_resd,  wt = n_fext, name = "homic") |> 
+  mutate(p_fxet = round( (n_fext/homic)*100,1 ) ) -> counts
+
+#Gráfico de faixa etária e instrumento
+sim_doext |> 
+  filter(intencao_homic == "Homicídio" & !is.na(idade) & def_reg_resd == "Centro Oeste") |>
+  mutate(
+    idade = idade |> as.integer(),
+    #Idade até 90 anos 
+    idade = case_when(idade >= 90 ~ 90, .default = idade),    
+    #Faixa etária
+    fxet = (idade %/% 5) * 5 ) |> 
+  #Contagem de notificações, por sexo e tipo de violência.
+  count(def_uf_resd,fxet,instrumento) |> 
+  #Precisa converter em factor para aparecer no eixo x, ao fazer o facet
+  mutate(fxet = fxet |> as_factor() ) |>
+  
+  #Gráfico
+  ggplot( aes(x = fxet, fill = instrumento, 
+              weight = n, by = fxet ) ) +
+  
+  geom_bar(position = "fill") + 
+  
+  #geom_text(stat = "prop", position = position_fill(0.5), size = 2.5 ) 
+  #Por UF de residência
+  facet_wrap(vars(def_uf_resd), scales = "free") +
+  
+  scale_x_discrete( 
+    
+    labels = paste(counts$fxet, "\n n = ", counts$n_fext, "\n", paste(counts$p_fxet,"%") ) ) + 
+  
+  scale_y_continuous(labels =  scales::percent) +
+  theme(legend.position = "bottom") +
+  labs(x = "Faixa Etária",
+       y = "Proporção (%)",
+       fill = "") 
+ggsave(filename ="fig5.eps",width = 15,height = 10,device=cairo_ps, dpi=150)
+
+rm(counts)  
